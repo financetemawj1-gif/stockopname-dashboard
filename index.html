@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Stock Opname Dashboard</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+
+    <!-- Export utilities -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p>Memproses Data...</p>
+    </div>
+
+    <!-- Drilldown Modal -->
+    <div id="drilldown-modal" class="modal">
+        <div class="modal-content" style="max-width: 1000px; width: 95%;">
+            <div class="modal-header" style="flex-wrap: wrap; gap: 1rem; align-items: center; padding: 1rem 1.5rem;">
+                <h3 id="modal-title" style="flex: 1; font-weight: 700; color: var(--text-main); margin: 0;">Histori Transaksi</h3>
+                <div class="modal-actions" style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="btn btn-outline" onclick="exportDrilldownExcel()" style="color: #16a34a; border-color: rgba(22,163,74,0.3); background: #f0fdf4; padding: 0.4rem 0.8rem; font-size: 0.85rem;"><i class="fas fa-file-excel"></i> Excel</button>
+                    <button class="btn btn-outline" onclick="exportDrilldownPDF()" style="color: #dc2626; border-color: rgba(220,38,36,0.3); background: #fef2f2; padding: 0.4rem 0.8rem; font-size: 0.85rem;"><i class="fas fa-file-pdf"></i> PDF</button>
+                    <button class="btn btn-outline" onclick="exportDrilldownHTML()" style="color: #2563eb; border-color: rgba(37,99,235,0.3); background: #eff6ff; padding: 0.4rem 0.8rem; font-size: 0.85rem;"><i class="fas fa-file-code"></i> HTML</button>
+                </div>
+                <button class="close-btn" onclick="closeModal()" style="margin-left: 0.5rem;"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+                    <div class="search-box small" style="width: 250px; margin-bottom: 0;">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="modal-search" placeholder="Cari nama barang..." oninput="onModalSearch()" style="background: white; border-radius: 6px; padding: 0.4rem 0.4rem 0.4rem 2rem;">
+                    </div>
+                    <div>
+                        <button class="btn btn-outline" onclick="toggleAllModalRows()" id="btn-toggle-all" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: white;"><i class="fas fa-expand-arrows-alt"></i> Expand All</button>
+                    </div>
+                </div>
+                <div class="table-container" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; max-height: 60vh; overflow-y: auto;">
+                    <table id="drilldown-table" style="width: 100%; border-collapse: collapse;">
+                        <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 10;">
+                            <tr style="border-bottom: 2px solid var(--border-color);">
+                                <th style="width: 40px; text-align: center; padding: 0.75rem 0.5rem;"></th>
+                                <th style="text-align: left; padding: 0.75rem;">Tanggal</th>
+                                <th style="text-align: left; padding: 0.75rem;">Area</th>
+                                <th style="text-align: right; padding: 0.75rem;">Qty Sistem</th>
+                                <th style="text-align: right; padding: 0.75rem;">Sistem (RP)</th>
+                                <th style="text-align: right; padding: 0.75rem;">Fisik Qty</th>
+                                <th style="text-align: right; padding: 0.75rem;">Selisih Qty</th>
+                                <th style="text-align: right; padding: 0.75rem;">Selisih (RP)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drilldown-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-container">
+        
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-chart-pie"></i>
+                <h2>Audit Dashboard</h2>
+            </div>
+            
+            <div class="filters">
+                <h3><i class="fas fa-filter"></i> Global Filters</h3>
+                
+                <div class="filter-group">
+                    <label>Rentang Tanggal</label>
+                    <div class="date-picker-group">
+                        <input type="date" id="date-start" title="Tanggal Mulai">
+                        <span>-</span>
+                        <input type="date" id="date-end" title="Tanggal Selesai">
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Kategori Barang</label>
+                    <select id="kategori-filter">
+                        <option value="all">Semua Kategori</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Area</label>
+                    <select id="area-filter">
+                        <option value="all">Semua Area</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Canvaser</label>
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="canvaser-search" placeholder="Cari nama canvaser...">
+                    </div>
+                    <select id="canvaser-filter" size="4" class="listbox">
+                        <option value="all" selected>-- Semua Canvaser --</option>
+                    </select>
+                </div>
+
+                <button class="btn-reset" onclick="resetFilters()"><i class="fas fa-undo"></i> Reset Filters</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <div class="header-titles">
+                    <h1>Laporan Stock Opname Eksekutif</h1>
+                    <p class="subtitle">Analisis akurasi stok dan nilai kerugian</p>
+                </div>
+                
+                <div class="header-actions">
+                    <div class="toggle-group">
+                        <span class="toggle-label" id="label-qty">Qty</span>
+                        <label class="switch">
+                            <input type="checkbox" id="metric-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                        <span class="toggle-label" id="label-rp">Rupiah (Rp)</span>
+                    </div>
+
+                    <div class="export-group">
+                        <button class="btn btn-outline" onclick="exportCSV()"><i class="fas fa-file-csv"></i> CSV</button>
+                        <button class="btn btn-outline" onclick="exportPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- KPI Cards -->
+            <section class="kpi-cards" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                <div class="card kpi-card">
+                    <div class="kpi-icon primary"><i class="fas fa-clipboard-check"></i></div>
+                    <div class="kpi-content">
+                        <h4>Total Item Diaudit</h4>
+                        <h2 id="kpi-total-items">0</h2>
+                    </div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-icon primary" style="background: #e0e7ff; color: #4338ca;"><i class="fas fa-boxes"></i></div>
+                    <div class="kpi-content">
+                        <h4>Total Qty Sistem</h4>
+                        <div class="kpi-value-row">
+                            <h2 id="kpi-system-stock">0</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-icon primary" style="background: #dbeafe; color: #1d4ed8;"><i class="fas fa-wallet"></i></div>
+                    <div class="kpi-content">
+                        <h4>Nominal Sistem (Rp)</h4>
+                        <div class="kpi-value-row">
+                            <h2 id="kpi-system-rp">Rp 0</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-icon danger"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="kpi-content">
+                        <h4>Total Selisih (<span class="metric-unit">Qty</span>)</h4>
+                        <div class="kpi-value-row">
+                            <h2 id="kpi-selisih">0</h2>
+                            <span class="trend" id="trend-selisih"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-icon warning"><i class="fas fa-money-bill-wave"></i></div>
+                    <div class="kpi-content">
+                        <h4>Nominal Selisih (Rp)</h4>
+                        <div class="kpi-value-row">
+                            <h2 id="kpi-kerugian">Rp 0</h2>
+                            <span class="trend" id="trend-kerugian"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-icon success"><i class="fas fa-bullseye"></i></div>
+                    <div class="kpi-content">
+                        <h4>Rasio Akurasi</h4>
+                        <div class="kpi-value-row">
+                            <h2 id="kpi-akurasi">0%</h2>
+                            <span class="trend" id="trend-akurasi"></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts -->
+            <section class="charts-section">
+                <div class="card chart-card full-width">
+                    <div class="chart-header">
+                        <h3>Tren Rasio Akurasi per Bulan (%)</h3>
+                    </div>
+                    <div id="trendChart" class="echart-container"></div>
+                </div>
+
+                <div class="card chart-card full-width">
+                    <div class="chart-header">
+                        <h3>Top 10 Barang dengan Selisih Terbesar (<span class="metric-unit">Qty</span>)</h3>
+                        <p class="hint"><i class="fas fa-info-circle"></i> Klik pada grafik batang untuk melihat detail histori (Drill-down).</p>
+                    </div>
+                    <div id="topChart" class="echart-container" style="height: 400px;"></div>
+                </div>
+            </section>
+
+            <!-- Table Section -->
+            <section class="card table-card">
+                <div class="table-header-row">
+                    <h3>Rata-rata Selisih per Canvaser</h3>
+                    <div class="search-box small">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="table-search" placeholder="Cari area/canvaser...">
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table id="summaryTable">
+                        <thead>
+                            <tr>
+                                <th onclick="sortTable(0)">Area <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(1)">ID Canvaser <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(2)">Nama Canvaser <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(3)">Total Audit <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(4)">Qty Sistem <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(5)">Sistem (Rp) <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(6)">Selisih (<span class="metric-unit">Qty</span>) <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(7)">Nominal Selisih (Rp) <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(8)">Akurasi <i class="fas fa-sort"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody id="summary-tbody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="empty-state" class="empty-state" style="display: none;">
+                    <i class="fas fa-folder-open"></i>
+                    <p>Tidak ada data yang cocok dengan filter yang dipilih.</p>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
