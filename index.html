@@ -272,13 +272,6 @@
 
     <!-- Scripts -->
     <script src="data.js"></script>
-    <script>
-        // Cache-buster: paksa browser load app.js terbaru
-        (function() {
-            var s = document.createElement('script');
-            s.src = 'app.js?v=' + Date.now();
-            document.body.appendChild(s);
-        })();
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
