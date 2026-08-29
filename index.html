@@ -229,9 +229,14 @@
             <section class="card table-card">
                 <div class="table-header-row">
                     <h3>Rata-rata Selisih per Canvaser</h3>
-                    <div class="search-box small">
-                        <i class="fas fa-search"></i>
-                        <input type="text" id="table-search" placeholder="Cari area/canvaser...">
+                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <div class="search-box small" style="margin-bottom:0;">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="table-search" placeholder="Cari area/canvaser...">
+                        </div>
+                        <button class="btn btn-outline" onclick="exportSummaryExcel()" title="Export ke Excel" style="color:#16a34a; border-color:rgba(22,163,74,0.3); background:#f0fdf4; padding:0.4rem 0.8rem; font-size:0.82rem; white-space:nowrap;"><i class="fas fa-file-excel"></i> Excel</button>
+                        <button class="btn btn-outline" onclick="exportSummaryPDF()" title="Export ke PDF" style="color:#dc2626; border-color:rgba(220,38,38,0.3); background:#fef2f2; padding:0.4rem 0.8rem; font-size:0.82rem; white-space:nowrap;"><i class="fas fa-file-pdf"></i> PDF</button>
+                        <button class="btn btn-outline" onclick="exportSummaryHTML()" title="Export ke HTML Interaktif" style="color:#2563eb; border-color:rgba(37,99,235,0.3); background:#eff6ff; padding:0.4rem 0.8rem; font-size:0.82rem; white-space:nowrap;"><i class="fas fa-file-code"></i> HTML</button>
                     </div>
                 </div>
                 
@@ -267,6 +272,13 @@
 
     <!-- Scripts -->
     <script src="data.js"></script>
-    <script src="app.js"></script>
+    <script>
+        // Cache-buster: paksa browser load app.js terbaru
+        (function() {
+            var s = document.createElement('script');
+            s.src = 'app.js?v=' + Date.now();
+            document.body.appendChild(s);
+        })();
+    </script>
 </body>
 </html>

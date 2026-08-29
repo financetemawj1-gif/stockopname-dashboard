@@ -82,6 +82,17 @@ document.addEventListener('DOMContentLoaded', () => {
 /* ==============================
    FILTERS & TOGGLE
    ============================== */
+function getCurrentMonthRange() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth(); // 0-indexed
+    const firstDay = new Date(y, m, 1);
+    const lastDay = new Date(y, m + 1, 0); // last day of current month
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    return { start: fmt(firstDay), end: fmt(lastDay) };
+}
+
 function initFilters() {
     // Populate Kategori
     const categories = [...new Set(dashboardData.map(d => d.Category))].filter(Boolean).sort();
@@ -93,14 +104,12 @@ function initFilters() {
     const areaSelect = document.getElementById('area-filter');
     areas.forEach(a => areaSelect.add(new Option(a, a)));
 
-    // Set Date min/max
-    const dates = dashboardData.map(d => d.Date).sort();
-    if (dates.length > 0) {
-        document.getElementById('date-start').value = dates[0];
-        document.getElementById('date-end').value = dates[dates.length - 1];
-        filters.dateStart = dates[0];
-        filters.dateEnd = dates[dates.length - 1];
-    }
+    // Set Default Date = Bulan Berjalan
+    const { start, end } = getCurrentMonthRange();
+    document.getElementById('date-start').value = start;
+    document.getElementById('date-end').value = end;
+    filters.dateStart = start;
+    filters.dateEnd = end;
 
     // Event Listeners
     document.getElementById('date-start').addEventListener('change', (e) => { filters.dateStart = e.target.value; updateAll(); });
@@ -152,15 +161,14 @@ function resetFilters() {
     document.getElementById('canvaser-filter').value = 'all';
     document.getElementById('canvaser-search').value = '';
     
-    const dates = dashboardData.map(d => d.Date).sort();
-    if (dates.length) {
-        document.getElementById('date-start').value = dates[0];
-        document.getElementById('date-end').value = dates[dates.length - 1];
-    }
+    // Reset ke bulan berjalan
+    const { start, end } = getCurrentMonthRange();
+    document.getElementById('date-start').value = start;
+    document.getElementById('date-end').value = end;
 
     filters = {
-        dateStart: dates[0] || '',
-        dateEnd: dates[dates.length - 1] || '',
+        dateStart: start,
+        dateEnd: end,
         kategori: 'all', area: 'all', canvaser: 'all'
     };
     updateCanvaserFilter();
@@ -715,6 +723,237 @@ function exportCSV() {
 
 function exportPDF() {
     window.print();
+}
+
+function exportSummaryExcel() {
+    const dateInfo = `${filters.dateStart} s.d. ${filters.dateEnd}`;
+    let html = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+            <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; }
+                table { border-collapse: collapse; width: 100%; }
+                th { background-color: #2563eb; color: white; border: 1px solid #cbd5e1; font-weight: bold; padding: 8px; }
+                td { border: 1px solid #e2e8f0; padding: 6px; }
+                .text-danger { color: #dc2626; font-weight: bold; }
+                .grand-total { background-color: #e2e8f0; font-weight: bold; }
+                .badge-good { color: #16a34a; }
+                .badge-warn { color: #d97706; }
+                .badge-bad { color: #dc2626; }
+            </style>
+        </head>
+        <body>
+            <h2>Laporan Rata-rata Selisih per Canvaser</h2>
+            <p>Periode: ${dateInfo}</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Area</th><th>ID Canvaser</th><th>Nama Canvaser</th>
+                        <th>Total Audit</th><th>Qty Sistem</th><th>Sistem (Rp)</th>
+                        <th>Selisih Qty</th><th>Nominal Selisih (Rp)</th><th>Akurasi (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    let grandAudit=0, grandSysQty=0, grandSysRp=0, grandQty=0, grandRp=0;
+    tableData.forEach(c => {
+        grandAudit += c.audit;
+        grandSysQty += c.sysQty;
+        grandSysRp += c.sysRp;
+        grandQty += c.qty;
+        grandRp += c.rp;
+        let badgeClass = c.akurasi >= 95 ? 'badge-good' : c.akurasi >= 85 ? 'badge-warn' : 'badge-bad';
+        html += `<tr>
+            <td>${c.area}</td><td>${c.id}</td><td>${c.name}</td>
+            <td align="right">${c.audit}</td>
+            <td align="right">${c.sysQty}</td>
+            <td align="right">${c.sysRp}</td>
+            <td align="right" class="${c.qty > 0 ? 'text-danger' : ''}">${c.qty}</td>
+            <td align="right" class="${c.rp > 0 ? 'text-danger' : ''}">${c.rp}</td>
+            <td align="right" class="${badgeClass}">${c.akurasi.toFixed(1)}%</td>
+        </tr>`;
+    });
+    html += `<tr class="grand-total">
+        <td colspan="3"><strong>GRAND TOTAL</strong></td>
+        <td align="right"><strong>${grandAudit}</strong></td>
+        <td align="right"><strong>${grandSysQty}</strong></td>
+        <td align="right"><strong>${grandSysRp}</strong></td>
+        <td align="right" class="text-danger"><strong>${grandQty}</strong></td>
+        <td align="right" class="text-danger"><strong>${grandRp}</strong></td>
+        <td></td>
+    </tr>`;
+    html += `</tbody></table></body></html>`;
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Summary_Canvaser_${filters.dateStart}_${filters.dateEnd}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function exportSummaryPDF() {
+    const dateInfo = `${filters.dateStart} s.d. ${filters.dateEnd}`;
+    const tableHTML = document.getElementById('summaryTable').outerHTML;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) { alert('Popup diblokir. Izinkan popup untuk mencetak PDF.'); return; }
+    printWindow.document.write(`
+        <!DOCTYPE html><html><head>
+        <title>Summary Canvaser ${dateInfo}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+        <style>
+            body { font-family: 'Inter', sans-serif; padding: 20px; color: #1e293b; }
+            h2 { color: #2563eb; margin-bottom: 6px; font-size: 1.2rem; }
+            p { color: #64748b; margin-bottom: 16px; font-size: 0.85rem; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { padding: 7px; border: 1px solid #cbd5e1; }
+            th { background: #2563eb; color: white; font-weight: 700; }
+            .text-danger { color: #dc2626 !important; font-weight: bold; }
+            .badge { border-radius: 4px; padding: 2px 6px; font-weight: bold; font-size: 10px; }
+            .badge.good { background: #dcfce7; color: #16a34a; }
+            .badge.warn { background: #fef9c3; color: #d97706; }
+            .badge.bad  { background: #fee2e2; color: #dc2626; }
+            @media print { @page { size: landscape; margin: 10mm; } }
+        </style>
+        </head><body>
+        <h2>Laporan Rata-rata Selisih per Canvaser</h2>
+        <p>Periode: ${dateInfo}</p>
+        ${tableHTML}
+        <script>setTimeout(function(){ window.print(); window.close(); }, 400);<\/script>
+        </body></html>
+    `);
+    printWindow.document.close();
+}
+
+function exportSummaryHTML() {
+    const dateInfo = `${filters.dateStart} s.d. ${filters.dateEnd}`;
+    const rows = tableData.map(c => {
+        let badgeClass = c.akurasi >= 95 ? 'good' : c.akurasi >= 85 ? 'warn' : 'bad';
+        return `<tr>
+            <td>${c.area}</td><td>${c.id}</td><td>${c.name}</td>
+            <td class="text-right">${formatNum(c.audit)}</td>
+            <td class="text-right">${formatNum(c.sysQty)}</td>
+            <td class="text-right">${formatNum(c.sysRp, true)}</td>
+            <td class="text-right ${c.qty > 0 ? 'text-danger' : ''}">${formatNum(c.qty)}</td>
+            <td class="text-right ${c.rp > 0 ? 'text-danger' : ''}">${formatNum(c.rp, true)}</td>
+            <td class="text-right"><span class="badge ${badgeClass}">${c.akurasi.toFixed(1)}%</span></td>
+        </tr>`;
+    }).join('');
+
+    const fullHtml = `<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Summary Canvaser - ${dateInfo}</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  :root { --primary: #2563eb; --danger: #ef4444; --border: #e2e8f0; }
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'Outfit',sans-serif; }
+  body { background: linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%); min-height:100vh; padding:2rem 1rem; }
+  .container { max-width:1200px; margin:0 auto; background:#fff; border-radius:20px; box-shadow:0 15px 35px rgba(37,99,235,.12); overflow:hidden; }
+  header { background: linear-gradient(90deg,#2563eb 0%,#3b82f6 100%); padding:1.5rem 2rem; color:white; }
+  header h1 { font-size:1.4rem; font-weight:800; }
+  header p { opacity:.85; font-size:.85rem; margin-top:.25rem; }
+  .toolbar { padding:1rem 2rem; background:#f8fafc; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.75rem; }
+  .search-box { position:relative; width:280px; }
+  .search-box i { position:absolute; left:.9rem; top:50%; transform:translateY(-50%); color:#94a3b8; }
+  .search-box input { width:100%; padding:.6rem .9rem .6rem 2.3rem; border:2px solid var(--border); border-radius:10px; font-size:.9rem; outline:none; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#eff6ff; padding:.85rem 1rem; font-weight:700; color:#2563eb; font-size:.78rem; text-transform:uppercase; border-bottom:2px solid var(--border); cursor:pointer; white-space:nowrap; }
+  th:hover { background:#dbeafe; }
+  td { padding:.8rem 1rem; border-bottom:1px solid var(--border); font-size:.88rem; }
+  tr:hover td { background:#f0f9ff; }
+  .text-right { text-align:right; }
+  .text-danger { color:var(--danger); font-weight:600; }
+  .badge { border-radius:20px; padding:3px 10px; font-size:.78rem; font-weight:700; }
+  .badge.good { background:#dcfce7; color:#16a34a; }
+  .badge.warn { background:#fef9c3; color:#d97706; }
+  .badge.bad  { background:#fee2e2; color:#dc2626; }
+  .grand-total td { background:#e2e8f0 !important; font-weight:800; border-top:2px solid #94a3b8; }
+  .info-bar { padding:.75rem 2rem; background:#eff6ff; font-size:.82rem; color:#1e40af; border-bottom:1px solid #dbeafe; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1><i class="fas fa-chart-bar"></i> Laporan Rata-rata Selisih per Canvaser</h1>
+    <p>Periode: ${dateInfo} &nbsp;|&nbsp; Diunduh: <span id="dl-date"></span></p>
+  </header>
+  <div class="info-bar">Total ${tableData.length} canvaser ditampilkan</div>
+  <div class="toolbar">
+    <div class="search-box">
+      <i class="fas fa-search"></i>
+      <input type="text" id="html-search" placeholder="Cari area / canvaser..." oninput="filterHTML()">
+    </div>
+    <span style="font-size:.82rem;color:#64748b;">Klik header kolom untuk sort</span>
+  </div>
+  <div style="overflow-x:auto;">
+    <table id="html-table">
+      <thead>
+        <tr>
+          <th onclick="sortHTML(0)">Area</th>
+          <th onclick="sortHTML(1)">ID Canvaser</th>
+          <th onclick="sortHTML(2)">Nama Canvaser</th>
+          <th onclick="sortHTML(3)" class="text-right">Total Audit</th>
+          <th onclick="sortHTML(4)" class="text-right">Qty Sistem</th>
+          <th onclick="sortHTML(5)" class="text-right">Sistem (Rp)</th>
+          <th onclick="sortHTML(6)" class="text-right">Selisih Qty</th>
+          <th onclick="sortHTML(7)" class="text-right">Nominal Selisih (Rp)</th>
+          <th onclick="sortHTML(8)" class="text-right">Akurasi</th>
+        </tr>
+      </thead>
+      <tbody id="html-tbody">${rows}</tbody>
+    </table>
+  </div>
+</div>
+<script>
+  document.getElementById('dl-date').textContent = new Date().toLocaleString('id-ID');
+  var rawData = ${JSON.stringify(tableData)};
+  var sortCol = -1, sortAsc = true;
+  function formatNum(n, isRp) {
+    if(n==null) return isRp ? 'Rp 0' : '0';
+    var s = Math.round(n).toLocaleString('id-ID');
+    return isRp ? 'Rp '+s : s;
+  }
+  function renderHTML(data) {
+    var search = (document.getElementById('html-search').value||'').toLowerCase();
+    var filtered = data.filter(c => !search || c.area.toLowerCase().includes(search) || c.name.toLowerCase().includes(search) || c.id.toLowerCase().includes(search));
+    var rows = filtered.map(function(c){
+      var bc = c.akurasi>=95?'good':c.akurasi>=85?'warn':'bad';
+      return '<tr><td>'+c.area+'</td><td>'+c.id+'</td><td>'+c.name+'</td>'+
+        '<td class="text-right">'+formatNum(c.audit)+'</td>'+
+        '<td class="text-right">'+formatNum(c.sysQty)+'</td>'+
+        '<td class="text-right">'+formatNum(c.sysRp,true)+'</td>'+
+        '<td class="text-right'+(c.qty>0?' text-danger':'')+'">'+formatNum(c.qty)+'</td>'+
+        '<td class="text-right'+(c.rp>0?' text-danger':'')+'">'+formatNum(c.rp,true)+'</td>'+
+        '<td class="text-right"><span class="badge '+bc+'">'+c.akurasi.toFixed(1)+'%</span></td></tr>';
+    }).join('');
+    document.getElementById('html-tbody').innerHTML = rows;
+  }
+  function filterHTML() { renderHTML(rawData); }
+  function sortHTML(col) {
+    if(sortCol===col){ sortAsc=!sortAsc; } else { sortCol=col; sortAsc=true; }
+    var keys=['area','id','name','audit','sysQty','sysRp','qty','rp','akurasi'];
+    rawData.sort(function(a,b){
+      var va=a[keys[col]], vb=b[keys[col]];
+      if(typeof va==='string') return sortAsc?va.localeCompare(vb):vb.localeCompare(va);
+      return sortAsc?va-vb:vb-va;
+    });
+    renderHTML(rawData);
+  }
+<\/script>
+</body></html>`;
+
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Summary_Canvaser_${filters.dateStart}_${filters.dateEnd}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 function exportDrilldownExcel() {
